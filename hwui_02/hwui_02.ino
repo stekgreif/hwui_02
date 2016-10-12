@@ -7,49 +7,39 @@
 uint16_t adc_pins[10] = {};
 uint16_t adc_values[10] = {};
 
+uint8_t btn_pin = 12;
+
 char print_buffer[64] = {};
 
 
 void setup()
 {
-	Serial.begin(9600);
-	
-	adc_pins[0] = 0;
-  adc_pins[1] = 1;
-  adc_pins[2] = 2;
-  adc_pins[3] = 3;
-  adc_pins[4] = 4;
-  adc_pins[5] = 5;
-  adc_pins[6] = 6;
-  adc_pins[7] = 7;
-  adc_pins[8] = 8; 
-  adc_pins[9] = 9; 
+	Serial.begin(115200);
+
+  for(int i = 0; i < 10; i++)
+  {
+	  adc_pins[i] = i;
+  }
+
+  pinMode(btn_pin, INPUT_PULLUP); 
 }
 
 
 void loop()
 {
-    adc_values[0] = analogRead(adc_pins[0]);
-    adc_values[1] = analogRead(adc_pins[1]);
-		adc_values[2] = analogRead(adc_pins[2]);
-    adc_values[3] = analogRead(adc_pins[3]);
-    adc_values[4] = analogRead(adc_pins[4]);
-    adc_values[5] = analogRead(adc_pins[5]);    
-    adc_values[6] = analogRead(adc_pins[6]);
-    adc_values[7] = analogRead(adc_pins[7]);
-    adc_values[8] = analogRead(adc_pins[8]);
-    adc_values[9] = analogRead(adc_pins[9]);
+  for(int i = 0; i < 10; i++)
+  {
+    adc_values[i] = analogRead(adc_pins[i]);
+  }
 
 
-  	sprintf(print_buffer, "%04d %04d  %04d %04d  %04d %04d  %04d %04d  %04d %04d",
-  	        adc_values[0], adc_values[1], 
-            adc_values[2], adc_values[3], 
-            adc_values[4], adc_values[5], 
-            adc_values[6], adc_values[7], 
-            adc_values[8], adc_values[9]);
-  	Serial.println(print_buffer);
 
-    delay(50);
+	sprintf(print_buffer, "%04d %04d  %04d %04d  %04d %04d  %04d %04d  %04d %04d %04d",
+	        adc_values[0], adc_values[1], adc_values[2], adc_values[3], adc_values[4], 
+	        adc_values[5], adc_values[6], adc_values[7], adc_values[8], adc_values[9], digitalRead(btn_pin) );
+	Serial.println(print_buffer);
+
+  delay(50);
 }
 
 
