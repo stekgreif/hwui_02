@@ -104,13 +104,13 @@ void erp_send_diff(void)
 			else if ( erp_diff[id] > 127 )
 				erp_diff[id] = 127;
 
-#if 1 // for debugging			
+#if 0 // for debugging			
 			print_buffer_clean_up();
 			sprintf(print_buffer, "%02d %04d", id, erp_new_pos[id]);
 			Serial.println(print_buffer);
 #endif
 			
-#if 0 // send via USB
+#if 1 // send via USB
 			midiEventPacket_t event = {0x0B, 0xB0, id, (uint8_t)erp_diff[id]};
 			MidiUSB.sendMIDI(event);
 			usb_midi_msg_cnt++;
@@ -119,6 +119,25 @@ void erp_send_diff(void)
 	}
 }
 
+
+
+void usb_midi_read()
+{
+  midiEventPacket_t rx;
+
+
+  rx = MidiUSB.read();
+
+  if (rx.header == 0xE) // MIDI SYSTEM
+  {
+    if ( rx.byte2 == _UIN)
+    {
+      midiEventPacket_t event = {0x0E, 0xE0, 0, _UIN};
+      MidiUSB.sendMIDI(event);
+      usb_midi_msg_cnt++;
+    }
+  }
+}
 
 
 /******************************************************************************/
@@ -154,23 +173,15 @@ void loop()
 			}
 			case 4:
 			{
+        usb_midi_read();
 				break;
 			}
-			case 20:
+			case 10:
 			{
 				if( usb_midi_msg_cnt > 0 )
 				{
 					MidiUSB.flush();
 				}
-#if 0 // uart rx
-				if( stringComplete )
-				{
-					Serial.println(_ID);
-					// clear the string:
-					inputString = "";
-					stringComplete = false;
-				}
-#endif
 				sched_cnt = 0;
 			}
 			default:
