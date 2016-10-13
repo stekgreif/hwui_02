@@ -1,45 +1,183 @@
 /******************************************************************************/
 /** @date		2016-10-12
-	@brief		4 erps and 1 joystick
+	@author	dan@stekgreif.com
+	@brief		4 erps and 1 joystick with tactile button
 *******************************************************************************/
 #include <stdio.h>
+#include "MIDIUSB.h"
+
+#define _UIN	0x03
+#define _TYPE	0x02
+
+uint32_t cur_tick = 0;
+uint32_t prev_tick = 0;
+uint8_t  sched_cnt  = 0;
+uint8_t  usb_midi_msg_cnt = 0;
 
 uint16_t adc_pins[10] = {};
 uint16_t adc_values[10] = {};
+
+uint16_t erp_old_pos[4] = {};
+uint16_t erp_new_pos[4] = {};
+int16_t  erp_diff[4] = {};
 
 uint8_t btn_pin = 12;
 
 char print_buffer[64] = {};
 
 
+
+/******************************************************************************/
+/** @brief		init serial, usb, gpios
+*******************************************************************************/
 void setup()
 {
 	Serial.begin(115200);
 
-  for(int i = 0; i < 10; i++)
-  {
-	  adc_pins[i] = i;
-  }
+	for(int i = 0; i < 10; i++)
+	{
+		adc_pins[i] = i;
+	}
 
-  pinMode(btn_pin, INPUT_PULLUP); 
+	pinMode(btn_pin, INPUT_PULLUP); 
 }
 
 
-void loop()
+
+/******************************************************************************/
+/** @brief	functions to be called from state machine
+*******************************************************************************/
+void print_buffer_clean_up(void)
 {
-  for(int i = 0; i < 10; i++)
-  {
-    adc_values[i] = analogRead(adc_pins[i]);
-  }
+	for( int i = 0; i < 64; i++ )
+	{
+		print_buffer[i] = 0;
+	}
+}
 
+void adc_read_values(void)
+{
+	for( int i = 0; i < 10; i++ )
+	{
+		adc_values[i] = analogRead(adc_pins[i]);
+	}
+}
 
-
+void adc_print_values(void)
+{
+	print_buffer_clean_up();
 	sprintf(print_buffer, "%04d %04d  %04d %04d  %04d %04d  %04d %04d  %04d %04d %04d",
 	        adc_values[0], adc_values[1], adc_values[2], adc_values[3], adc_values[4], 
 	        adc_values[5], adc_values[6], adc_values[7], adc_values[8], adc_values[9], digitalRead(btn_pin) );
 	Serial.println(print_buffer);
+}
 
-  delay(50);
+void erp_get_positions(void)
+{
+	for( int i = 0; i < 4; i++ )
+	{	
+		erp_new_pos[i] = erp_get_position( adc_values[ i*2 ], adc_values[ (i*2)+1 ] );
+		erp_new_pos[i] = erp_new_pos[i] >> 3; // reduce jitter by reducing bits
+	}
+}
+
+void erp_print_positions(void)
+{
+	print_buffer_clean_up();
+	sprintf(print_buffer, "%04d %04d %04d %04d", erp_new_pos[0], erp_new_pos[1], erp_new_pos[2], erp_new_pos[3] );
+	Serial.println(print_buffer);
+}
+
+void erp_send_diff(void)
+{
+	for (uint8_t id = 0; id < 4; id++)
+	{
+		if (erp_old_pos[id] != erp_new_pos[id])
+		{
+			erp_diff[id] = erp_old_pos[id] - erp_new_pos[id];
+			erp_old_pos[id] = erp_new_pos[id];
+
+			//erp_diff[id] = erp_diff[id] + 63;
+			
+			if( erp_diff[id] < 0 )
+				erp_diff[id] = 0;
+			else if ( erp_diff[id] > 127 )
+				erp_diff[id] = 127;
+
+#if 1 // for debugging			
+			print_buffer_clean_up();
+			sprintf(print_buffer, "%02d %04d", id, erp_new_pos[id]);
+			Serial.println(print_buffer);
+#endif
+			
+#if 0 // send via USB
+			midiEventPacket_t event = {0x0B, 0xB0, id, (uint8_t)erp_diff[id]};
+			MidiUSB.sendMIDI(event);
+			usb_midi_msg_cnt++;
+#endif
+		}
+	}
+}
+
+
+
+/******************************************************************************/
+/** @brief		state machine
+*******************************************************************************/
+void loop()
+{
+	cur_tick = millis();
+
+	//if( Serial.available() ) serialEvent();   //Atmega32U4: UART RX polling
+
+	if( cur_tick != prev_tick )
+	{
+		sched_cnt++;
+
+		switch ( sched_cnt )
+		{
+			case 1:
+			{
+				adc_read_values();
+				break;
+			}
+			case 2:
+			{
+				erp_get_positions();
+				break;
+			}
+			case 3:
+			{
+				erp_send_diff();
+				//erp_print_positions();
+				break;
+			}
+			case 4:
+			{
+				break;
+			}
+			case 20:
+			{
+				if( usb_midi_msg_cnt > 0 )
+				{
+					MidiUSB.flush();
+				}
+#if 0 // uart rx
+				if( stringComplete )
+				{
+					Serial.println(_ID);
+					// clear the string:
+					inputString = "";
+					stringComplete = false;
+				}
+#endif
+				sched_cnt = 0;
+			}
+			default:
+				break;
+		}
+	}
+	prev_tick = cur_tick;
 }
 
 
@@ -55,7 +193,7 @@ void loop()
 	@param y analog outputs B of the erp (10 bit value)
 	@return calculated position (0..2047)
 *******************************************************************************/
-static uint16_t GetPosition(uint16_t x, uint16_t y)
+static uint16_t erp_get_position(uint16_t x, uint16_t y)
 {
 	/* variables for temporary calculation*/
 	uint32_t x_c;
