@@ -1,13 +1,13 @@
 /******************************************************************************/
-/** @date		2016-10-12
+/** @date		2016-10-14
 	@author	dan@stekgreif.com
 	@brief		4 erps and 1 joystick with tactile button
 *******************************************************************************/
 #include <stdio.h>
 #include "MIDIUSB.h"
 
-#define _UIN	0x03
-#define _TYPE	0x02
+#define _ID	0x02
+#define _HWUITYPE	0x02
 
 uint32_t cur_tick = 0;
 uint32_t prev_tick = 0;
@@ -32,7 +32,7 @@ char print_buffer[64] = {};
 *******************************************************************************/
 void setup()
 {
-	Serial.begin(115200);
+	//Serial.begin(115200);
 
 	for(int i = 0; i < 10; i++)
 	{
@@ -77,7 +77,7 @@ void erp_get_positions(void)
 	for( int i = 0; i < 4; i++ )
 	{	
 		erp_new_pos[i] = erp_get_position( adc_values[ i*2 ], adc_values[ (i*2)+1 ] );
-		erp_new_pos[i] = erp_new_pos[i] >> 3; // reduce jitter by reducing bits
+		erp_new_pos[i] = erp_new_pos[i] >> 5; // reduce jitter by reducing bits
 	}
 }
 
@@ -111,8 +111,8 @@ void erp_send_diff(void)
 #endif
 			
 #if 1 // send via USB
-			midiEventPacket_t event = {0x0B, 0xB0, id, (uint8_t)erp_diff[id]};
-			MidiUSB.sendMIDI(event);
+			midiEventPacket_t event2 = {0x0B, 0xB0, id, (uint8_t)erp_diff[id]};
+			MidiUSB.sendMIDI(event2);
 			usb_midi_msg_cnt++;
 #endif
 		}
@@ -124,15 +124,14 @@ void erp_send_diff(void)
 void usb_midi_read()
 {
   midiEventPacket_t rx;
-
-
   rx = MidiUSB.read();
 
-  if (rx.header == 0xE) // MIDI SYSTEM
+  if (rx.header == 0x0A) // hwui identifier message
   {
-    if ( rx.byte2 == _UIN)
+    if ( rx.byte2 == _ID)
     {
-      midiEventPacket_t event = {0x0E, 0xE0, 0, _UIN};
+      midiEventPacket_t event = {0x0A, 0xA0, _ID, _HWUITYPE};
+      //midiEventPacket_t event = {rx.header, rx.byte1, rx.byte2, rx.byte3}; // midi echo
       MidiUSB.sendMIDI(event);
       usb_midi_msg_cnt++;
     }
