@@ -1,5 +1,5 @@
 /******************************************************************************/
-/** @date		2016-10-14
+/** @date		2016-10-18
 	@author	dan@stekgreif.com
 	@brief		4 erps and 1 joystick with tactile button
 *******************************************************************************/
@@ -7,7 +7,6 @@
 #include "MIDIUSB.h"
 
 #define _ID	0x02
-#define _HWUITYPE	0x02
 
 uint32_t cur_tick = 0;
 uint32_t prev_tick = 0;
@@ -21,6 +20,8 @@ uint16_t erp_old_pos[4] = {};
 uint16_t erp_new_pos[4] = {};
 int16_t  erp_diff[4] = {};
 
+uint8_t joystick_old[2] = {};
+
 uint8_t btn_pin = 12;
 
 char print_buffer[64] = {};
@@ -32,8 +33,10 @@ char print_buffer[64] = {};
 *******************************************************************************/
 void setup()
 {
-	//Serial.begin(115200);
-
+	Serial.begin(115200);
+  
+  analogReference(EXTERNAL);
+  
 	for(int i = 0; i < 10; i++)
 	{
 		adc_pins[i] = i;
@@ -95,9 +98,19 @@ void erp_send_diff(void)
 		if (erp_old_pos[id] != erp_new_pos[id])
 		{
 			erp_diff[id] = erp_old_pos[id] - erp_new_pos[id];
+
+      if(erp_diff[id] <= -50)
+      {
+        erp_diff[id] = erp_diff[id] + 64;  // erp wrap around
+      }
+      if(erp_diff[id] >= 50)
+      {
+        erp_diff[id] = erp_diff[id] - 64;  // erp wrap around
+      }
+      
 			erp_old_pos[id] = erp_new_pos[id];
 
-			//erp_diff[id] = erp_diff[id] + 63;
+			erp_diff[id] = erp_diff[id] + 64; // midi offset for incremental mode
 			
 			if( erp_diff[id] < 0 )
 				erp_diff[id] = 0;
@@ -121,6 +134,30 @@ void erp_send_diff(void)
 
 
 
+void joystick_send(void)
+{
+  uint8_t temp_joy_0 = adc_values[8] >> 5;
+  uint8_t temp_joy_1 = adc_values[9] >> 5;
+  
+  if( temp_joy_0 != joystick_old[0] )
+  {
+      midiEventPacket_t event = {0x0B, 0xB0, 0x10, adc_values[8]};
+      MidiUSB.sendMIDI(event);
+      usb_midi_msg_cnt++;
+      joystick_old[0] = temp_joy_0;
+  }
+  
+  if( temp_joy_1 != joystick_old[1] )
+  {
+      midiEventPacket_t event = {0x0B, 0xB0, 0x11, adc_values[9]};
+      MidiUSB.sendMIDI(event);
+      usb_midi_msg_cnt++;
+      joystick_old[1] = temp_joy_1;
+  }
+}
+
+
+
 void usb_midi_read()
 {
   midiEventPacket_t rx;
@@ -128,10 +165,9 @@ void usb_midi_read()
 
   if (rx.header == 0x0A) // hwui identifier message
   {
-    if ( rx.byte2 == _ID)
+    if ( rx.byte2 == 0x01)
     {
-      midiEventPacket_t event = {0x0A, 0xA0, _ID, _HWUITYPE};
-      //midiEventPacket_t event = {rx.header, rx.byte1, rx.byte2, rx.byte3}; // midi echo
+      midiEventPacket_t event = {0x0A, 0xA0, 0, _ID};
       MidiUSB.sendMIDI(event);
       usb_midi_msg_cnt++;
     }
@@ -175,6 +211,11 @@ void loop()
         usb_midi_read();
 				break;
 			}
+      case 5:
+      {
+        joystick_send();
+        break;
+      }
 			case 10:
 			{
 				if( usb_midi_msg_cnt > 0 )
